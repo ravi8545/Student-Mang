@@ -1,0 +1,11 @@
+/* Minimal layout helpers (Bootstrap does most of the styling) */
+
+body {
+	padding-top: 24px;
+}
+
+.page {
+	max-width: 980px;
+	margin: 0 auto;
+	padding: 0 16px;
+}
