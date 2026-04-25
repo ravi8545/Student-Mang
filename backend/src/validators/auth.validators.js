@@ -25,3 +25,8 @@ export const adminLoginValidator = [
 	body('password').notEmpty().withMessage('Password is required'),
 	validate,
 ];
+
+export const resendVerificationValidator = [
+	body('email').trim().isEmail().withMessage('Valid email is required').normalizeEmail(),
+	validate,
+];

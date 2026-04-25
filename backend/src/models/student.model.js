@@ -22,7 +22,12 @@ const studentSchema = new mongoose.Schema(
 		department: { type: String, required: true, trim: true },
 		roomNo: { type: String, required: true, trim: true },
 		hostelName: { type: String, required: true, trim: true },
-		verified: { type: Boolean, default: false },
+		// Student profile photo stored in ImageKit.
+		photoUrl: { type: String, default: null },
+		// Email verification
+		isVerified: { type: Boolean, default: false },
+		verificationToken: { type: String, default: null },
+		verificationTokenExpiresAt: { type: Date, default: null },
 		// Base64 PNG data URL generated from { studentId }.
 		qrCodeDataUrl: { type: String, default: null },
 	},

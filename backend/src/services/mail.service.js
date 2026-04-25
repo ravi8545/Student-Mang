@@ -2,11 +2,23 @@ import nodemailer from 'nodemailer';
 
 // Email service used for verification emails.
 // Supports:
-// - Gmail App Password (GMAIL_USER + GMAIL_PASS)
+// - Gmail SMTP App Password (EMAIL_USER + EMAIL_PASS)
+// - Backward-compat: (GMAIL_USER + GMAIL_PASS)
 // - Gmail OAuth2 (GOOGLE_* variables)
 
 function buildTransporter() {
-	// Option A: Gmail SMTP app password
+	// Option A: Gmail SMTP app password (preferred names)
+	if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+		return nodemailer.createTransport({
+			service: 'gmail',
+			auth: {
+				user: process.env.EMAIL_USER,
+				pass: process.env.EMAIL_PASS,
+			},
+		});
+	}
+
+	// Backward compatible env names
 	if (process.env.GMAIL_USER && process.env.GMAIL_PASS) {
 		return nodemailer.createTransport({
 			service: 'gmail',
@@ -48,18 +60,21 @@ if (transporter) {
 		.catch((err) => console.warn('Email transporter verification failed:', err?.message));
 } else {
 	console.warn(
-		'Email transporter not configured. Set GMAIL_USER and GMAIL_PASS (Gmail App Password) in backend/.env. Verification emails will not send.'
+		'Email transporter not configured. Set EMAIL_USER and EMAIL_PASS (Gmail App Password) in backend/.env. Verification emails will not send.'
 	);
 }
 
 export async function sendEmail({ to, subject, html, text }) {
 	if (!transporter) {
 		throw new Error(
-			'Mailer is not configured. Set GMAIL_USER and GMAIL_PASS (Gmail App Password) in backend/.env, then restart the backend.'
+			'Mailer is not configured. Set EMAIL_USER and EMAIL_PASS (Gmail App Password) in backend/.env, then restart the backend.'
 		);
 	}
 
-	const from = process.env.GMAIL_USER || process.env.GOOGLE_USER;
+	const from =
+		process.env.EMAIL_USER ||
+		process.env.GMAIL_USER ||
+		process.env.GOOGLE_USER;
 
 	const details = await transporter.sendMail({
 		from,

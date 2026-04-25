@@ -1,6 +1,14 @@
 import mongoose from 'mongoose';
 
 // Stores a student's IN/OUT timestamps for a single day.
+const sessionSchema = new mongoose.Schema(
+	{
+		inTime: { type: Date, default: null },
+		outTime: { type: Date, default: null },
+	},
+	{ _id: false }
+);
+
 const attendanceSchema = new mongoose.Schema(
 	{
 		studentId: {
@@ -11,6 +19,9 @@ const attendanceSchema = new mongoose.Schema(
 		},
 		// We store date as YYYY-MM-DD for easy "one record per day" logic.
 		date: { type: String, required: true, index: true },
+		// Multiple entry/exit cycles per day.
+		sessions: { type: [sessionSchema], default: [] },
+		// Backward-compatible fields (mirror the latest session IN/OUT).
 		inTime: { type: Date, default: null },
 		outTime: { type: Date, default: null },
 	},

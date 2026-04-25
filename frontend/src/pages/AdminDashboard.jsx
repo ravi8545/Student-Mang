@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import QrScanner from 'qr-scanner';
 import qrScannerWorkerUrl from 'qr-scanner/qr-scanner-worker.min.js?url';
@@ -25,6 +25,38 @@ function formatDateTime(value) {
 	return d.toLocaleString();
 }
 
+function getSessionRowsFromAdminLogs(logs) {
+	const rows = [];
+	for (const log of logs || []) {
+		const sessions =
+			Array.isArray(log.sessions) && log.sessions.length
+				? log.sessions
+				: log.inTime || log.outTime
+					? [{ inTime: log.inTime || null, outTime: log.outTime || null }]
+					: [];
+
+		for (let i = 0; i < sessions.length; i += 1) {
+			const s = sessions[i] || {};
+			rows.push({
+				key: `${log._id}:${i}`,
+				date: log.date,
+				name: log.studentId?.name || '-',
+				rollNo: log.studentId?.rollNo || '-',
+				inTime: s.inTime || null,
+				outTime: s.outTime || null,
+			});
+		}
+	}
+
+	rows.sort((a, b) => {
+		const aTime = new Date(a.inTime || a.outTime || 0).getTime();
+		const bTime = new Date(b.inTime || b.outTime || 0).getTime();
+		return bTime - aTime;
+	});
+
+	return rows;
+}
+
 export default function AdminDashboard() {
 	const navigate = useNavigate();
 
@@ -39,6 +71,10 @@ export default function AdminDashboard() {
 
 	const [students, setStudents] = useState([]);
 	const [attendance, setAttendance] = useState([]);
+	const attendanceRows = useMemo(
+		() => getSessionRowsFromAdminLogs(attendance),
+		[attendance]
+	);
 
 	const [loadingStudents, setLoadingStudents] = useState(true);
 	const [loadingAttendance, setLoadingAttendance] = useState(true);
@@ -47,7 +83,7 @@ export default function AdminDashboard() {
 
 	function logout() {
 		clearAuth();
-		navigate('/admin/login', { replace: true });
+		navigate('/admin', { replace: true });
 	}
 
 	const refreshAll = useCallback(async () => {
@@ -140,7 +176,7 @@ export default function AdminDashboard() {
 	}, [refreshAll]);
 
 	return (
-		<div className="page">
+		<div className="page py-4">
 			<div className="d-flex justify-content-between align-items-center mb-3">
 				<h3 className="m-0">Guard/Admin Dashboard</h3>
 				<div className="d-flex gap-2">
@@ -261,7 +297,7 @@ export default function AdminDashboard() {
 						<div className="card-body">
 							{loadingAttendance ? (
 								<div>Loading attendance…</div>
-							) : attendance.length ? (
+							) : attendanceRows.length ? (
 								<div className="table-responsive">
 									<table className="table table-striped align-middle">
 										<thead>
@@ -274,13 +310,13 @@ export default function AdminDashboard() {
 											</tr>
 										</thead>
 										<tbody>
-											{attendance.map((log) => (
-												<tr key={log._id}>
-													<td>{log.date}</td>
-													<td>{log.studentId?.name || '-'}</td>
-													<td>{log.studentId?.rollNo || '-'}</td>
-													<td>{formatDateTime(log.inTime)}</td>
-													<td>{formatDateTime(log.outTime)}</td>
+											{attendanceRows.map((row) => (
+												<tr key={row.key}>
+													<td>{row.date}</td>
+													<td>{row.name}</td>
+													<td>{row.rollNo}</td>
+													<td>{formatDateTime(row.inTime)}</td>
+													<td>{formatDateTime(row.outTime)}</td>
 												</tr>
 											))}
 										</tbody>

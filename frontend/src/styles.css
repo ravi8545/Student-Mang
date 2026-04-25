@@ -1,11 +1,103 @@
-/* Minimal layout helpers (Bootstrap does most of the styling) */
+/* Global app theme (Bootstrap + light blue/white gradient) */
 
 body {
-	padding-top: 24px;
+	min-height: 100vh;
+	background: linear-gradient(
+		135deg,
+		rgba(13, 110, 253, 0.12) 0%,
+		#ffffff 45%,
+		rgba(13, 110, 253, 0.1) 100%
+	);
+}
+
+.public-shell {
+	min-height: 100vh;
+	display: flex;
+	flex-direction: column;
 }
 
 .page {
-	max-width: 980px;
+	max-width: 1100px;
 	margin: 0 auto;
 	padding: 0 16px;
+}
+
+/* Public navbar */
+
+.public-nav {
+	position: sticky;
+	top: 0;
+	z-index: 1020;
+	background: rgba(255, 255, 255, 0.86);
+	backdrop-filter: blur(10px);
+	border-bottom: 1px solid rgba(13, 110, 253, 0.14);
+}
+
+.public-nav .nav-link {
+	font-weight: 500;
+}
+
+/* Modern card feel */
+
+.card {
+	border: 0;
+	box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
+}
+
+.card:hover {
+	box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
+}
+
+/* Home hero */
+
+.hero-card {
+	box-shadow: 0 14px 36px rgba(13, 110, 253, 0.14);
+}
+
+.hero-title {
+	line-height: 1.2;
+}
+
+.hero-media {
+	min-height: 260px;
+}
+
+/* Student profile photo */
+
+.profile-photo {
+	width: 120px;
+	height: 120px;
+	border-radius: 50%;
+	object-fit: cover;
+	border: 3px solid rgba(13, 110, 253, 0.18);
+	background: rgba(13, 110, 253, 0.06);
+}
+
+/* Footer */
+
+.public-footer {
+	margin-top: 32px;
+	background: rgba(255, 255, 255, 0.75);
+	backdrop-filter: blur(10px);
+	border-top: 1px solid rgba(13, 110, 253, 0.14);
+}
+
+.footer-link {
+	color: rgba(13, 110, 253, 0.95);
+	text-decoration: none;
+}
+
+.footer-link:hover {
+	text-decoration: underline;
+}
+
+.footer-divider {
+	height: 1px;
+	background: rgba(13, 110, 253, 0.14);
+}
+
+.social-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 }

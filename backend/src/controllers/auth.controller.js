@@ -1,14 +1,14 @@
-import jwt from 'jsonwebtoken';
-
 import Student from '../models/student.model.js';
 import asyncHandler from '../utils/asyncHandler.js';
-import { sendEmail } from '../services/mail.service.js';
-import { generateStudentQrDataUrl } from '../services/qr.service.js';
+import { uploadStudentPhoto } from '../services/imagekit.service.js';
 import {
-	signAdminToken,
-	signEmailVerificationToken,
-	signStudentToken,
-} from '../utils/jwt.js';
+	generateVerificationToken,
+	getVerificationTokenExpiryDate,
+	sendVerificationEmail,
+	buildFrontendVerifyUrl,
+} from '../services/emailVerification.service.js';
+import { generateStudentQrDataUrl } from '../services/qr.service.js';
+import { signAdminToken, signStudentToken } from '../utils/jwt.js';
 
 // POST /api/auth/signup
 export const studentSignup = asyncHandler(async (req, res) => {
@@ -22,6 +22,7 @@ export const studentSignup = asyncHandler(async (req, res) => {
 		});
 	}
 
+	const verificationToken = generateVerificationToken();
 	const student = await Student.create({
 		name,
 		rollNo,
@@ -30,33 +31,44 @@ export const studentSignup = asyncHandler(async (req, res) => {
 		department,
 		roomNo,
 		hostelName,
+		isVerified: false,
+		verificationToken,
+		verificationTokenExpiresAt: getVerificationTokenExpiryDate(),
 	});
 
-	// Generate and store a UNIQUE QR code (base64 image) per student.
-	// QR encodes JSON: { "studentId": "..." }
-	const { dataUrl } = await generateStudentQrDataUrl(String(student._id));
-	student.qrCodeDataUrl = dataUrl;
-	await student.save();
+	try {
+		// Optional profile photo upload (multipart/form-data: field name "photo").
+		if (req.file?.buffer) {
+			try {
+				const uploaded = await uploadStudentPhoto({
+					fileBuffer: req.file.buffer,
+					fileName: `student_${student._id}`,
+					mimeType: req.file.mimetype,
+					folder: '/hostelqr/students',
+				});
+				student.photoUrl = uploaded.url;
+			} catch (err) {
+				// Photo is optional; do not fail signup.
+				console.warn('Profile photo upload failed:', err?.message);
+			}
+		}
 
-	const token = signEmailVerificationToken(student);
-	const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
-	const verifyUrl = `${backendUrl}/api/auth/verify-email?token=${token}`;
+		// Generate and store a UNIQUE QR code (base64 image) per student.
+		// QR encodes JSON: { "studentId": "..." }
+		const { dataUrl } = await generateStudentQrDataUrl(String(student._id));
+		student.qrCodeDataUrl = dataUrl;
+		await student.save();
+	} catch (err) {
+		// If anything fails after creation (photo/QR), rollback to avoid blocking re-signup.
+		await Student.findByIdAndDelete(student._id);
+		throw err;
+	}
 
+	const verifyUrl = buildFrontendVerifyUrl(verificationToken);
 	// Send verification email (non-blocking for account creation).
 	let emailSent = true;
 	try {
-		await sendEmail({
-			to: student.email,
-			subject: 'Verify your email - Hostel Entry Exit System',
-			html: `
-				<p>Hello <strong>${student.name}</strong>,</p>
-				<p>Thanks for signing up. Please verify your email to log in.</p>
-				<p>
-					<a href="${verifyUrl}" style="display:inline-block;padding:10px 16px;background:#0d6efd;color:#fff;text-decoration:none;border-radius:6px;">Verify Email</a>
-				</p>
-				<p>If you did not sign up, you can ignore this email.</p>
-			`,
-		});
+		await sendVerificationEmail({ to: student.email, name: student.name, token: verificationToken });
 	} catch (err) {
 		emailSent = false;
 		console.warn('Failed to send verification email:', err?.message);
@@ -73,7 +85,8 @@ export const studentSignup = asyncHandler(async (req, res) => {
 			department: student.department,
 			roomNo: student.roomNo,
 			hostelName: student.hostelName,
-			verified: student.verified,
+			photoUrl: student.photoUrl || null,
+			isVerified: Boolean(student.isVerified),
 		},
 	};
 
@@ -87,39 +100,50 @@ export const studentSignup = asyncHandler(async (req, res) => {
 	return res.status(201).json(response);
 });
 
-// GET /api/auth/verify-email?token=...
+async function verifyStudentByToken(token) {
+	if (!token) {
+		return { ok: false, status: 400, message: 'Missing verification token' };
+	}
+
+	const student = await Student.findOne({ verificationToken: token });
+	if (!student) {
+		return { ok: false, status: 400, message: 'Invalid/Expired Link' };
+	}
+
+	if (
+		student.verificationTokenExpiresAt &&
+		new Date(student.verificationTokenExpiresAt).getTime() < Date.now()
+	) {
+		return { ok: false, status: 400, message: 'Invalid/Expired Link' };
+	}
+
+	student.isVerified = true;
+	student.verificationToken = null;
+	student.verificationTokenExpiresAt = null;
+	await student.save();
+
+	return { ok: true, student };
+}
+
+// GET /api/auth/verify/:token
+export const verifyEmailToken = asyncHandler(async (req, res) => {
+	const { token } = req.params;
+	const result = await verifyStudentByToken(token);
+	if (!result.ok) {
+		return res.status(result.status).json({ success: false, message: result.message });
+	}
+	return res.json({ success: true, message: 'Email Verified Successfully' });
+});
+
+// Legacy helper (kept for backward compatibility): GET /api/auth/verify-email?token=...
 export const verifyEmail = asyncHandler(async (req, res) => {
 	const { token } = req.query;
 	if (!token) {
-		return res.status(400).send('Missing token');
+		return res.status(400).json({ success: false, message: 'Missing verification token' });
 	}
-
-	let decoded;
-	try {
-		decoded = jwt.verify(token, process.env.JWT_SECRET);
-	} catch (err) {
-		return res.status(400).send('Invalid or expired token');
-	}
-
-	if (decoded?.purpose !== 'verify-email') {
-		return res.status(400).send('Invalid token purpose');
-	}
-
-	const student = await Student.findById(decoded.id);
-	if (!student) {
-		return res.status(404).send('Student not found');
-	}
-
-	student.verified = true;
-	await student.save();
-
-	const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-
-	return res.send(`
-		<h2>Email Verified ✅</h2>
-		<p>Your email has been successfully verified. You can now log in.</p>
-		<a href="${frontendUrl}/login" style="display:inline-block;padding:10px 16px;background:#198754;color:#fff;text-decoration:none;border-radius:6px;">Go to Login</a>
-	`);
+	// Redirect users who open the link directly in a browser.
+	const redirectUrl = buildFrontendVerifyUrl(token);
+	return res.redirect(302, redirectUrl);
 });
 
 // POST /api/auth/login
@@ -142,10 +166,11 @@ export const studentLogin = asyncHandler(async (req, res) => {
 		});
 	}
 
-	if (!student.verified) {
+	const isVerified = student.isVerified === true || student?.verified === true;
+	if (!isVerified) {
 		return res.status(400).json({
 			success: false,
-			message: 'Email not verified. Please verify your email before logging in.',
+			message: 'Please verify your email before logging in',
 		});
 	}
 
@@ -163,9 +188,57 @@ export const studentLogin = asyncHandler(async (req, res) => {
 			department: student.department,
 			roomNo: student.roomNo,
 			hostelName: student.hostelName,
-			verified: student.verified,
+			isVerified,
 		},
 	});
+});
+
+// POST /api/auth/resend-verification
+export const resendVerification = asyncHandler(async (req, res) => {
+	const { email } = req.body || {};
+	if (!email) {
+		return res.status(400).json({ success: false, message: 'Email is required' });
+	}
+
+	const student = await Student.findOne({ email: String(email).toLowerCase() });
+	if (!student) {
+		return res
+			.status(404)
+			.json({ success: false, message: 'Student not found' });
+	}
+
+	if (student.isVerified === true) {
+		return res
+			.status(400)
+			.json({ success: false, message: 'Email is already verified' });
+	}
+
+	const verificationToken = generateVerificationToken();
+	student.verificationToken = verificationToken;
+	student.verificationTokenExpiresAt = getVerificationTokenExpiryDate();
+	await student.save();
+
+	const verifyUrl = buildFrontendVerifyUrl(verificationToken);
+	let emailSent = true;
+	try {
+		await sendVerificationEmail({ to: student.email, name: student.name, token: verificationToken });
+	} catch (err) {
+		emailSent = false;
+		console.warn('Failed to resend verification email:', err?.message);
+	}
+
+	const response = {
+		success: true,
+		message: 'Verification email sent',
+	};
+
+	if (!emailSent && process.env.NODE_ENV !== 'production') {
+		response.message =
+			'Could not send verification email. Use devVerifyUrl to verify.';
+		response.devVerifyUrl = verifyUrl;
+	}
+
+	return res.json(response);
 });
 
 // GET /api/auth/me (student)
@@ -176,6 +249,35 @@ export const getMe = asyncHandler(async (req, res) => {
 	}
 
 	return res.json({ success: true, student });
+});
+
+// POST /api/auth/me/photo (student)
+export const updateMyPhoto = asyncHandler(async (req, res) => {
+	if (!req.file?.buffer) {
+		return res.status(400).json({ success: false, message: 'Photo file is required' });
+	}
+
+	const student = await Student.findById(req.user.id).select('-password');
+	if (!student) {
+		return res.status(404).json({ success: false, message: 'Student not found' });
+	}
+
+	const uploaded = await uploadStudentPhoto({
+		fileBuffer: req.file.buffer,
+		fileName: `student_${student._id}`,
+		mimeType: req.file.mimetype,
+		folder: '/hostelqr/students',
+	});
+
+	student.photoUrl = uploaded.url;
+	await student.save();
+
+	return res.json({
+		success: true,
+		message: 'Profile photo updated',
+		photoUrl: student.photoUrl,
+		student,
+	});
 });
 
 // GET /api/auth/me/qr (student)

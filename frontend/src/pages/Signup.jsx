@@ -3,6 +3,16 @@ import { Link } from 'react-router-dom';
 
 import { api } from '../api/axios';
 
+const DEPARTMENTS = ['MCA', 'BCA', 'BTech', 'MTech', 'BPharma', 'BALLB', 'BSc', 'MSc'];
+const HOSTELS = [
+	'Vishwakarma Hostel',
+	'Charak Hostel',
+	'Dr. C.V. Raman Hostel',
+	'Srinivasan Ramanujam Hostel (Boys)',
+	'Meerabai Hostel (Girls)',
+	'Draupadi Hostel (Girls)',
+];
+
 function getErrorMessage(err) {
 	return (
 		err?.response?.data?.message ||
@@ -18,10 +28,11 @@ export default function Signup() {
 		rollNo: '',
 		email: '',
 		password: '',
-		department: '',
+		department: DEPARTMENTS[0],
 		roomNo: '',
-		hostelName: '',
+		hostelName: HOSTELS[0],
 	});
+	const [photoFile, setPhotoFile] = useState(null);
 
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState('');
@@ -40,7 +51,17 @@ export default function Signup() {
 		setLoading(true);
 
 		try {
-			const res = await api.post('/auth/signup', form);
+			const data = new FormData();
+			data.append('name', form.name);
+			data.append('rollNo', form.rollNo);
+			data.append('email', form.email);
+			data.append('password', form.password);
+			data.append('roomNo', form.roomNo);
+			data.append('department', form.department);
+			data.append('hostelName', form.hostelName);
+			if (photoFile) data.append('photo', photoFile);
+
+			const res = await api.post('/auth/signup', data);
 			setSuccess(res.data?.message || 'Signup successful. Please verify your email.');
 			setDevVerifyUrl(res.data?.devVerifyUrl || '');
 		} catch (err) {
@@ -51,7 +72,7 @@ export default function Signup() {
 	}
 
 	return (
-		<div className="page">
+		<div className="page py-4">
 			<h3 className="mb-3">Student Signup</h3>
 
 			<div className="card">
@@ -124,15 +145,21 @@ export default function Signup() {
 
 							<div className="col-md-6 mb-3">
 								<label className="form-label">Department</label>
-								<input
-									className="form-control"
+								<select
+									className="form-select"
 									value={form.department}
 									onChange={(e) => updateField('department', e.target.value)}
 									required
-								/>
+								>
+									{DEPARTMENTS.map((d) => (
+										<option key={d} value={d}>
+											{d}
+										</option>
+									))}
+								</select>
 							</div>
 							<div className="col-md-3 mb-3">
-								<label className="form-label">Room No</label>
+								<label className="form-label">Room Number</label>
 								<input
 									className="form-control"
 									value={form.roomNo}
@@ -142,12 +169,31 @@ export default function Signup() {
 							</div>
 							<div className="col-md-3 mb-3">
 								<label className="form-label">Hostel Name</label>
-								<input
-									className="form-control"
+								<select
+									className="form-select"
 									value={form.hostelName}
 									onChange={(e) => updateField('hostelName', e.target.value)}
 									required
+								>
+									{HOSTELS.map((h) => (
+										<option key={h} value={h}>
+											{h}
+										</option>
+									))}
+								</select>
+							</div>
+
+							<div className="col-12 mb-3">
+								<label className="form-label">Profile Photo (optional)</label>
+								<input
+									type="file"
+									className="form-control"
+									accept="image/*"
+									onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
 								/>
+								<div className="form-text">
+									If provided, the photo is uploaded to ImageKit.
+								</div>
 							</div>
 						</div>
 
