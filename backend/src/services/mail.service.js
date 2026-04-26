@@ -6,6 +6,20 @@ import nodemailer from 'nodemailer';
 // - Backward-compat: (GMAIL_USER + GMAIL_PASS)
 // - Gmail OAuth2 (GOOGLE_* variables)
 
+function logMailEnvStatus() {
+	const emailUser = process.env.EMAIL_USER || '';
+	const emailPass = process.env.EMAIL_PASS || '';
+
+	console.log('[mail] EMAIL_USER:', emailUser || '(not set)');
+	console.log('[mail] EMAIL_PASS length:', emailPass.length || 0);
+
+	if (emailPass && emailPass.length !== 16) {
+		console.warn(
+			'[mail] EMAIL_PASS does not look like a Gmail App Password (expected 16 characters). Do not use your normal Gmail password.'
+		);
+	}
+}
+
 function buildTransporter() {
 	// Option A: Gmail SMTP app password (preferred names)
 	if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
@@ -51,6 +65,7 @@ function buildTransporter() {
 	return null;
 }
 
+logMailEnvStatus();
 const transporter = buildTransporter();
 
 if (transporter) {
@@ -76,13 +91,30 @@ export async function sendEmail({ to, subject, html, text }) {
 		process.env.GMAIL_USER ||
 		process.env.GOOGLE_USER;
 
-	const details = await transporter.sendMail({
-		from,
+	console.log('[mail] sendEmail triggered', {
 		to,
 		subject,
-		html,
-		text,
+		usingFrom: from,
 	});
 
-	return details;
+	try {
+		const details = await transporter.sendMail({
+			from,
+			to,
+			subject,
+			html,
+			text,
+		});
+
+		console.log('[mail] Email sent successfully', {
+			messageId: details?.messageId,
+			accepted: details?.accepted,
+			rejected: details?.rejected,
+		});
+
+		return details;
+	} catch (err) {
+		console.error('[mail] transporter.sendMail failed:', err);
+		throw err;
+	}
 }

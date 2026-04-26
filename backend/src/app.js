@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { sendEmail } from './services/mail.service.js';
 
 import authRoutes from './routes/auth.routes.js';
 import attendanceRoutes from './routes/attendance.routes.js';
@@ -22,6 +23,40 @@ app.use(express.urlencoded({ extended: true }));
 // Health check
 app.get('/', (req, res) => {
 	res.json({ message: 'Hostel Entry Exit System API is running' });
+});
+
+// Temporary diagnostics route to validate email transport setup.
+// Usage: GET /api/test-email?to=you@example.com
+app.get('/api/test-email', async (req, res) => {
+	const to = String(req.query.to || process.env.EMAIL_USER || '').trim();
+
+	if (!to) {
+		return res.status(400).json({
+			success: false,
+			message: 'Missing recipient email. Pass ?to=you@example.com or set EMAIL_USER in backend/.env',
+		});
+	}
+
+	try {
+		await sendEmail({
+			to,
+			subject: 'HostelQR Email Test',
+			text: 'If you received this email, Nodemailer + Gmail SMTP is working.',
+			html: '<p>If you received this email, <strong>Nodemailer + Gmail SMTP</strong> is working.</p>',
+		});
+
+		return res.json({
+			success: true,
+			message: 'Test email sent successfully',
+			to,
+		});
+	} catch (err) {
+		return res.status(500).json({
+			success: false,
+			message: 'Failed to send test email',
+			error: err?.message || 'Unknown email error',
+		});
+	}
 });
 
 // API routes

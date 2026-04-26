@@ -21,6 +21,11 @@ export function buildFrontendVerifyUrl(token) {
 
 export async function sendVerificationEmail({ to, name, token }) {
 	const verifyUrl = buildFrontendVerifyUrl(token);
+	console.log('[mail] Verification email requested', {
+		to,
+		name: name || null,
+		verifyUrl,
+	});
 
 	await sendEmail({
 		to,
