@@ -30,6 +30,20 @@ const studentSchema = new mongoose.Schema(
 		verificationTokenExpiresAt: { type: Date, default: null },
 		// Base64 PNG data URL generated from { studentId }.
 		qrCodeDataUrl: { type: String, default: null },
+		// Face registration data captured via MediaPipe.
+		faceLandmarks: {
+			type: [
+				{
+					x: { type: Number, required: true },
+					y: { type: Number, required: true },
+					z: { type: Number, required: true, default: 0 },
+				},
+			],
+			default: [],
+		},
+		faceDescriptor: { type: [Number], default: [] },
+		faceImageDataUrl: { type: String, default: null },
+		faceRegisteredAt: { type: Date, default: null },
 	},
 	{ timestamps: true }
 );

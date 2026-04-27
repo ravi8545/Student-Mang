@@ -243,7 +243,8 @@ export const resendVerification = asyncHandler(async (req, res) => {
 
 // GET /api/auth/me (student)
 export const getMe = asyncHandler(async (req, res) => {
-	const student = await Student.findById(req.user.id).select('-password');
+	const student = await Student.findById(req.user.id)
+		.select('-password -faceDescriptor -faceLandmarks -faceImageDataUrl');
 	if (!student) {
 		return res.status(404).json({ success: false, message: 'Student not found' });
 	}
@@ -257,7 +258,8 @@ export const updateMyPhoto = asyncHandler(async (req, res) => {
 		return res.status(400).json({ success: false, message: 'Photo file is required' });
 	}
 
-	const student = await Student.findById(req.user.id).select('-password');
+	const student = await Student.findById(req.user.id)
+		.select('-password -faceDescriptor -faceLandmarks -faceImageDataUrl');
 	if (!student) {
 		return res.status(404).json({ success: false, message: 'Student not found' });
 	}

@@ -5,6 +5,7 @@ import { sendEmail } from './services/mail.service.js';
 import authRoutes from './routes/auth.routes.js';
 import attendanceRoutes from './routes/attendance.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import faceRoutes from './routes/face.routes.js';
 import { errorHandler, notFound } from './middleware/error.middleware.js';
 
 const app = express();
@@ -17,8 +18,8 @@ app.use(
 	})
 );
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Health check
 app.get('/', (req, res) => {
@@ -63,6 +64,7 @@ app.get('/api/test-email', async (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/face', faceRoutes);
 
 // Fallback + error handling
 app.use(notFound);

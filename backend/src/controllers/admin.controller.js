@@ -19,7 +19,9 @@ export const getAllStudentsWithLiveStatus = asyncHandler(async (req, res) => {
 	const today = getLocalDateString();
 
 	const [students, todaysAttendance] = await Promise.all([
-		Student.find().select('-password -qrCodeDataUrl').lean(),
+		Student.find()
+			.select('-password -qrCodeDataUrl -faceDescriptor -faceLandmarks -faceImageDataUrl')
+			.lean(),
 		Attendance.find({ date: today }).select('studentId sessions inTime outTime').lean(),
 	]);
 

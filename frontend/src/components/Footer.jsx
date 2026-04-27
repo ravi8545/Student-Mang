@@ -1,5 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { FaFacebookF, FaInstagram, FaLinkedinIn } from 'react-icons/fa';
+import { FaXTwitter } from 'react-icons/fa6';
 
 export default function Footer() {
 	const year = new Date().getFullYear();
@@ -10,7 +12,49 @@ export default function Footer() {
 					<div className="col-lg-4">
 						<div className="fw-semibold fs-5">HostelQR</div>
 						<div className="text-muted mt-2">
-							Smart QR-based hostel entry and exit management system
+							Smart QR + Face Recognition based hostel entry and exit management system
+						</div>
+						<div className="footer-social mt-3" aria-label="Social links">
+							<a
+								className="social-icon"
+								href="https://facebook.com"
+								target="_blank"
+								rel="noreferrer"
+								aria-label="Facebook"
+								title="Facebook"
+							>
+								<FaFacebookF />
+							</a>
+							<a
+								className="social-icon"
+								href="https://instagram.com"
+								target="_blank"
+								rel="noreferrer"
+								aria-label="Instagram"
+								title="Instagram"
+							>
+								<FaInstagram />
+							</a>
+							<a
+								className="social-icon"
+								href="https://x.com"
+								target="_blank"
+								rel="noreferrer"
+								aria-label="X (Twitter)"
+								title="X (Twitter)"
+							>
+								<FaXTwitter />
+							</a>
+							<a
+								className="social-icon"
+								href="https://linkedin.com"
+								target="_blank"
+								rel="noreferrer"
+								aria-label="LinkedIn"
+								title="LinkedIn"
+							>
+								<FaLinkedinIn />
+							</a>
 						</div>
 					</div>
 

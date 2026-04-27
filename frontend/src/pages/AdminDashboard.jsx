@@ -5,6 +5,7 @@ import qrScannerWorkerUrl from 'qr-scanner/qr-scanner-worker.min.js?url';
 
 import { api } from '../api/axios';
 import { clearAuth } from '../api/authStorage';
+import FaceVerificationPanel from '../components/FaceVerificationPanel.jsx';
 
 // Configure qr-scanner worker path for Vite.
 QrScanner.WORKER_PATH = qrScannerWorkerUrl;
@@ -64,6 +65,7 @@ export default function AdminDashboard() {
 	const scannerRef = useRef(null);
 	const processingRef = useRef(false);
 	const cooldownUntilRef = useRef(0);
+	const [scanMode, setScanMode] = useState('qr');
 
 	const [scannerStatus, setScannerStatus] = useState('starting');
 	const [scanInfo, setScanInfo] = useState(null);
@@ -112,6 +114,8 @@ export default function AdminDashboard() {
 	}, [refreshAll]);
 
 	useEffect(() => {
+		if (scanMode !== 'qr') return undefined;
+
 		const videoEl = videoRef.current;
 		if (!videoEl) return;
 
@@ -173,7 +177,7 @@ export default function AdminDashboard() {
 				// ignore cleanup errors
 			}
 		};
-	}, [refreshAll]);
+	}, [refreshAll, scanMode]);
 
 	return (
 		<div className="page py-4">
@@ -198,49 +202,72 @@ export default function AdminDashboard() {
 			<div className="row g-3">
 				<div className="col-lg-5">
 					<div className="card">
-						<div className="card-header d-flex justify-content-between align-items-center">
-							<span>QR Scanner</span>
-							<span className="badge text-bg-secondary">{scannerStatus}</span>
+						<div className="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+							<div className="btn-group btn-group-sm scan-mode-toggle" role="group" aria-label="Scan mode">
+								<button
+									type="button"
+									className={`btn ${scanMode === 'qr' ? 'btn-primary' : 'btn-outline-primary'}`}
+									onClick={() => setScanMode('qr')}
+								>
+									Scan QR
+								</button>
+								<button
+									type="button"
+									className={`btn ${scanMode === 'face' ? 'btn-primary' : 'btn-outline-primary'}`}
+									onClick={() => setScanMode('face')}
+								>
+									Scan Face
+								</button>
+							</div>
+							<span className="badge text-bg-secondary">
+								{scanMode === 'qr' ? scannerStatus : 'face mode'}
+							</span>
 						</div>
 						<div className="card-body">
-							<div className="ratio ratio-4x3">
-								<video
-									ref={videoRef}
-									style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-									muted
-									playsInline
-								/>
-							</div>
-
-							{scanError ? (
-								<div className="alert alert-warning mt-3 mb-0">{scanError}</div>
-							) : null}
-
-							{scanInfo?.status === 'processing' ? (
-								<div className="alert alert-info mt-3 mb-0">Processing scan…</div>
-							) : null}
-
-							{scanInfo?.status === 'done' ? (
-								<div className="alert alert-success mt-3 mb-0">
-									<div>
-										<strong>Action:</strong> {scanInfo.action}
+							{scanMode === 'qr' ? (
+								<>
+									<div className="ratio ratio-4x3">
+										<video
+											ref={videoRef}
+											style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+											muted
+											playsInline
+										/>
 									</div>
-									{scanInfo.student ? (
-										<div>
-											<strong>Student:</strong> {scanInfo.student.name} ({scanInfo.student.rollNo})
+
+									{scanError ? (
+										<div className="alert alert-warning mt-3 mb-0">{scanError}</div>
+									) : null}
+
+									{scanInfo?.status === 'processing' ? (
+										<div className="alert alert-info mt-3 mb-0">Processing scan…</div>
+									) : null}
+
+									{scanInfo?.status === 'done' ? (
+										<div className="alert alert-success mt-3 mb-0">
+											<div>
+												<strong>Action:</strong> {scanInfo.action}
+											</div>
+											{scanInfo.student ? (
+												<div>
+													<strong>Student:</strong> {scanInfo.student.name} ({scanInfo.student.rollNo})
+												</div>
+											) : null}
+											{scanInfo.attendance ? (
+												<div className="mt-1 small">
+													IN: {formatDateTime(scanInfo.attendance.inTime)} | OUT:{' '}
+													{formatDateTime(scanInfo.attendance.outTime)}
+												</div>
+											) : null}
+											{scanInfo.message ? (
+												<div className="mt-1 small text-muted">{scanInfo.message}</div>
+											) : null}
 										</div>
 									) : null}
-									{scanInfo.attendance ? (
-										<div className="mt-1 small">
-											IN: {formatDateTime(scanInfo.attendance.inTime)} | OUT:{' '}
-											{formatDateTime(scanInfo.attendance.outTime)}
-										</div>
-									) : null}
-									{scanInfo.message ? (
-										<div className="mt-1 small text-muted">{scanInfo.message}</div>
-									) : null}
-								</div>
-							) : null}
+								</>
+							) : (
+								<FaceVerificationPanel onAttendanceMarked={refreshAll} />
+							)}
 						</div>
 					</div>
 				</div>

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { api } from '../api/axios';
 import { clearAuth } from '../api/authStorage';
+import FaceRegistrationCard from '../components/FaceRegistrationCard.jsx';
 
 import placeholderUrl from '../assets/profile-placeholder.svg';
 
@@ -260,6 +261,14 @@ export default function StudentDashboard() {
 													<th>Hostel</th>
 													<td>{student.hostelName}</td>
 												</tr>
+												<tr>
+													<th>Face Profile</th>
+													<td>
+														{student.faceRegisteredAt
+															? `Registered on ${formatDateTime(student.faceRegisteredAt)}`
+															: 'Not registered'}
+													</td>
+												</tr>
 											</tbody>
 										</table>
 									</div>
@@ -306,6 +315,22 @@ export default function StudentDashboard() {
 				</div>
 			</div>
 
+			<div className="row g-3 mt-1">
+				<div className="col-12">
+					<FaceRegistrationCard
+						student={student}
+						onRegistered={(updatedFaceStudent) => {
+							if (!updatedFaceStudent) return;
+							setStudent((prev) =>
+								prev
+									? { ...prev, faceRegisteredAt: updatedFaceStudent.faceRegisteredAt }
+									: prev
+							);
+						}}
+					/>
+				</div>
+			</div>
+
 			<div className="card mt-3">
 				<div className="card-header d-flex justify-content-between align-items-center">
 					<span>Recent Attendance (Last 20)</span>
@@ -316,7 +341,7 @@ export default function StudentDashboard() {
 				<div className="card-body">
 					{loadingLogs ? (
 						<div>Loading attendance…</div>
-							) : recentRows.length ? (
+					) : recentRows.length ? (
 						<div className="table-responsive">
 							<table className="table table-striped align-middle">
 								<thead>
@@ -327,13 +352,13 @@ export default function StudentDashboard() {
 									</tr>
 								</thead>
 								<tbody>
-											{recentRows.map((row) => (
-												<tr key={row.key}>
-													<td>{row.date}</td>
-													<td>{formatDateTime(row.inTime)}</td>
-													<td>{formatDateTime(row.outTime)}</td>
-												</tr>
-											))}
+									{recentRows.map((row) => (
+										<tr key={row.key}>
+											<td>{row.date}</td>
+											<td>{formatDateTime(row.inTime)}</td>
+											<td>{formatDateTime(row.outTime)}</td>
+										</tr>
+									))}
 								</tbody>
 							</table>
 						</div>

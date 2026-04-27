@@ -1,17 +1,15 @@
 import nodemailer from 'nodemailer';
 
 // Email service used for verification emails.
-// Supports:
-// - Gmail SMTP App Password (EMAIL_USER + EMAIL_PASS)
-// - Backward-compat: (GMAIL_USER + GMAIL_PASS)
-// - Gmail OAuth2 (GOOGLE_* variables)
+// Uses Gmail SMTP App Password (EMAIL_USER + EMAIL_PASS)
 
 function logMailEnvStatus() {
-	const emailUser = process.env.EMAIL_USER || '';
-	const emailPass = process.env.EMAIL_PASS || '';
+	const emailUser = String(process.env.EMAIL_USER || '').trim();
+	const emailPass = String(process.env.EMAIL_PASS || '');
 
-	console.log('[mail] EMAIL_USER:', emailUser || '(not set)');
-	console.log('[mail] EMAIL_PASS length:', emailPass.length || 0);
+	console.log('[mail] EMAIL_USER set:', Boolean(emailUser));
+	if (emailUser) console.log('[mail] EMAIL_USER:', emailUser);
+	console.log('[mail] EMAIL_PASS length:', emailPass.length);
 
 	if (emailPass && emailPass.length !== 16) {
 		console.warn(
@@ -21,48 +19,21 @@ function logMailEnvStatus() {
 }
 
 function buildTransporter() {
-	// Option A: Gmail SMTP app password (preferred names)
-	if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-		return nodemailer.createTransport({
-			service: 'gmail',
-			auth: {
-				user: process.env.EMAIL_USER,
-				pass: process.env.EMAIL_PASS,
-			},
-		});
-	}
+	const emailUser = String(process.env.EMAIL_USER || '').trim();
+	const emailPass = String(process.env.EMAIL_PASS || '');
 
-	// Backward compatible env names
-	if (process.env.GMAIL_USER && process.env.GMAIL_PASS) {
-		return nodemailer.createTransport({
-			service: 'gmail',
-			auth: {
-				user: process.env.GMAIL_USER,
-				pass: process.env.GMAIL_PASS,
-			},
-		});
-	}
+	if (!emailUser || !emailPass) return null;
 
-	// Option B: Gmail OAuth2
-	if (
-		process.env.GOOGLE_USER &&
-		process.env.GOOGLE_CLIENT_ID &&
-		process.env.GOOGLE_CLIENT_SECRET &&
-		process.env.GOOGLE_REFRESH_TOKEN
-	) {
-		return nodemailer.createTransport({
-			service: 'gmail',
-			auth: {
-				type: 'OAuth2',
-				user: process.env.GOOGLE_USER,
-				clientId: process.env.GOOGLE_CLIENT_ID,
-				clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-				refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
-			},
-		});
-	}
-
-	return null;
+	// Gmail SMTP with App Password (recommended).
+	return nodemailer.createTransport({
+		host: 'smtp.gmail.com',
+		port: 465,
+		secure: true,
+		auth: {
+			user: emailUser,
+			pass: emailPass,
+		},
+	});
 }
 
 logMailEnvStatus();
@@ -72,10 +43,16 @@ if (transporter) {
 	transporter
 		.verify()
 		.then(() => console.log('Email transporter is ready'))
-		.catch((err) => console.warn('Email transporter verification failed:', err?.message));
+		.catch((err) => {
+			console.warn('Email transporter verification failed:', err?.message);
+			console.warn(
+				'[mail] If this is Gmail, ensure you are using a Gmail App Password (not your normal password) and that 2-Step Verification is enabled.'
+			);
+		});
 } else {
+	console.warn('[mail] Email transporter not configured.');
 	console.warn(
-		'Email transporter not configured. Set EMAIL_USER and EMAIL_PASS (Gmail App Password) in backend/.env. Verification emails will not send.'
+		'[mail] Missing EMAIL_USER and/or EMAIL_PASS. Set them in backend/.env using a Gmail App Password (NOT your normal Gmail password), then restart the backend.'
 	);
 }
 
@@ -86,10 +63,7 @@ export async function sendEmail({ to, subject, html, text }) {
 		);
 	}
 
-	const from =
-		process.env.EMAIL_USER ||
-		process.env.GMAIL_USER ||
-		process.env.GOOGLE_USER;
+	const from = String(process.env.EMAIL_USER || '').trim();
 
 	console.log('[mail] sendEmail triggered', {
 		to,
@@ -114,7 +88,9 @@ export async function sendEmail({ to, subject, html, text }) {
 
 		return details;
 	} catch (err) {
-		console.error('[mail] transporter.sendMail failed:', err);
-		throw err;
+		console.error('[mail] transporter.sendMail failed:', err?.message || err);
+		throw new Error(
+			`Failed to send email. Check EMAIL_USER/EMAIL_PASS (Gmail App Password) and Gmail security settings. Details: ${err?.message || 'Unknown error'}`
+		);
 	}
 }

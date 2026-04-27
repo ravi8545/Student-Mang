@@ -65,7 +65,9 @@ export const scanQrAndMarkAttendance = asyncHandler(async (req, res) => {
 		return res.status(400).json({ success: false, message: 'Invalid studentId in QR' });
 	}
 
-	const student = await Student.findById(studentId).select('-password');
+	const student = await Student.findById(studentId).select(
+		'-password -faceDescriptor -faceLandmarks -faceImageDataUrl'
+	);
 	if (!student) {
 		return res.status(404).json({ success: false, message: 'Student not found' });
 	}

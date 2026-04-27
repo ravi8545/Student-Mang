@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { FaQrcode, FaUserCheck } from 'react-icons/fa';
 
 import bannerUrl from '../assets/university.jpg';
 
@@ -11,11 +12,41 @@ export default function Home() {
 	const accessKey = import.meta.env.VITE_WEB3FORMS_ACCESS_KEY;
 	const endpoint = useMemo(() => 'https://api.web3forms.com/submit', []);
 
+	const dateFormatter = useMemo(
+		() =>
+			new Intl.DateTimeFormat('en-GB', {
+				weekday: 'long',
+				day: 'numeric',
+				month: 'long',
+				year: 'numeric',
+			}),
+		[]
+	);
+	const timeFormatter = useMemo(
+		() =>
+			new Intl.DateTimeFormat('en-US', {
+				hour: 'numeric',
+				minute: '2-digit',
+				hour12: true,
+			}),
+		[]
+	);
+	const [now, setNow] = useState(() => new Date());
+
 	const [cbName, setCbName] = useState('');
 	const [cbMobile, setCbMobile] = useState('');
 	const [cbLoading, setCbLoading] = useState(false);
 	const [cbError, setCbError] = useState('');
 	const [cbSuccess, setCbSuccess] = useState('');
+
+	useEffect(() => {
+		const id = window.setInterval(() => setNow(new Date()), 1000);
+		return () => window.clearInterval(id);
+	}, []);
+
+	const formattedNow = `${dateFormatter.format(now)} | ${String(
+		timeFormatter.format(now)
+	).toUpperCase()}`;
 
 	async function submitCallbackRequest(e) {
 		e.preventDefault();
@@ -73,13 +104,17 @@ export default function Home() {
 			<div className="card hero-card overflow-hidden">
 				<div className="row g-0 align-items-stretch">
 					<div className="col-lg-6 p-4 p-lg-5 d-flex flex-column justify-content-center">
-						<div className="text-primary fw-semibold">HostelQR</div>
+						<div className="d-flex flex-wrap align-items-center gap-2">
+							<div className="text-primary fw-semibold">HostelQR</div>
+							<span className="badge text-bg-light home-datetime">{formattedNow}</span>
+						</div>
 						<h1 className="mt-2 mb-3 hero-title">
 							Veer Bahadur Singh Purvanchal University
 						</h1>
-						<p className="lead mb-2">QR Based Hostel Entry Exit System</p>
+						<p className="lead mb-2">QR Code &amp; Face Recognition Attendance System</p>
 						<p className="text-muted mb-0">
-							A secure and paperless way to manage hostel entry and exit using unique QR codes.
+							Mark attendance using <strong>QR Code</strong> or <strong>Face Recognition</strong> with real-time
+							 IN/OUT tracking.
 						</p>
 					</div>
 					<div className="col-lg-6 hero-media">
@@ -89,6 +124,47 @@ export default function Home() {
 							className="w-100 h-100"
 							style={{ objectFit: 'cover' }}
 						/>
+					</div>
+				</div>
+			</div>
+
+			<div className="mt-4">
+				<h3 className="mb-3">Attendance Options</h3>
+				<div className="row g-3">
+					<div className="col-md-6">
+						<div className="card h-100">
+							<div className="card-body">
+								<div className="d-flex align-items-start gap-3">
+									<div className="text-primary home-feature-icon" aria-hidden="true">
+										<FaQrcode />
+									</div>
+									<div>
+										<div className="fw-semibold">QR Code Based Attendance</div>
+										<div className="text-muted mt-2">
+											Students use their unique QR code and the guard scans it to mark IN/OUT.
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<div className="col-md-6">
+						<div className="card h-100">
+							<div className="card-body">
+								<div className="d-flex align-items-start gap-3">
+									<div className="text-primary home-feature-icon" aria-hidden="true">
+										<FaUserCheck />
+									</div>
+									<div>
+										<div className="fw-semibold">Face Recognition Based Attendance</div>
+										<div className="text-muted mt-2">
+											Students register their face once, and the guard can verify by scanning the face.
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -150,45 +226,37 @@ export default function Home() {
 							</div>
 							<ol className="mb-0">
 								<li>Student signs up and receives a unique QR code.</li>
-								<li>Guard scans QR at the hostel gate.</li>
-								<li>System marks IN/OUT timestamps automatically.</li>
-								<li>Attendance history is available in the dashboard.</li>
+								<li>Student registers their face once from the dashboard.</li>
+								<li>Guard marks attendance using QR scan or Face Recognition scan.</li>
+								<li>System records IN/OUT timestamps and shows attendance history.</li>
 							</ol>
 						</div>
 					</div>
 				</div>
 			</div>
 
+
 			<div className="mt-4">
-				<h3 className="mb-3">Features</h3>
+				<h3 className="mb-3">Quotes</h3>
 				<div className="row g-3">
 					<div className="col-md-4">
 						<div className="card h-100">
 							<div className="card-body">
-								<div className="fw-semibold">Unique QR per Student</div>
-								<div className="text-muted mt-2">
-									Each student gets a unique QR to verify identity at the gate.
-								</div>
+								<div className="text-muted">“Be present. Be punctual. Be proud.”</div>
 							</div>
 						</div>
 					</div>
 					<div className="col-md-4">
 						<div className="card h-100">
 							<div className="card-body">
-								<div className="fw-semibold">Fast Scanning (Camera)</div>
-								<div className="text-muted mt-2">
-									Guards can scan QR codes using the device camera for quick entry/exit.
-								</div>
+								<div className="text-muted">“Small check-ins build big consistency.”</div>
 							</div>
 						</div>
 					</div>
 					<div className="col-md-4">
 						<div className="card h-100">
 							<div className="card-body">
-								<div className="fw-semibold">IN/OUT History</div>
-								<div className="text-muted mt-2">
-									View attendance history anytime from the student dashboard.
-								</div>
+								<div className="text-muted">“Make every entry and exit count.”</div>
 							</div>
 						</div>
 					</div>
