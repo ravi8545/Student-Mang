@@ -16,7 +16,8 @@ export default function Support() {
 							<div className="p-3 rounded border bg-body">
 								<div className="fw-semibold">Email Support</div>
 								<div className="text-muted">
-									<a href="mailto:raviprajapati8545@gmail.com">raviprajapati8545@gmail.com</a>
+									<a href="mailto:raviprajapati8545@gmail.com">raviprajapati8545@gmail.com</a> <br />
+									<a href="mailto:anupamprajapati2337583@gmail.com">anupamprajapati2337583@gmail.com</a>
 								</div>
 							</div>
 						</div>
@@ -24,7 +25,8 @@ export default function Support() {
 							<div className="p-3 rounded border bg-body">
 								<div className="fw-semibold">Phone Support</div>
 								<div className="text-muted">
-									<a href="tel:8765685890">8765685890</a>
+									<a href="tel:8765685890">+91 8765685890</a> <br />
+									<a href="tel:8765685890">+91 9451962435</a>
 								</div>
 							</div>
 						</div>

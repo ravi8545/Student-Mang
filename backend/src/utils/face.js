@@ -54,6 +54,35 @@ export function compareFaceDescriptors(candidate, stored) {
 	return totalDifference / candidate.length;
 }
 
+export function euclideanDistance(candidate, stored, maxDistance = Number.POSITIVE_INFINITY) {
+	if (!Array.isArray(candidate) || !Array.isArray(stored)) {
+		return Number.POSITIVE_INFINITY;
+	}
+
+	if (!candidate.length || candidate.length !== stored.length) {
+		return Number.POSITIVE_INFINITY;
+	}
+
+	const max = Number(maxDistance);
+	const maxDistanceSq = Number.isFinite(max) && max >= 0 ? max * max : Number.POSITIVE_INFINITY;
+
+	let sumSq = 0;
+	for (let index = 0; index < candidate.length; index += 1) {
+		const a = Number(candidate[index]);
+		const b = Number(stored[index]);
+		if (!Number.isFinite(a) || !Number.isFinite(b)) {
+			return Number.POSITIVE_INFINITY;
+		}
+		const diff = a - b;
+		sumSq += diff * diff;
+		if (sumSq > maxDistanceSq) {
+			return Math.sqrt(sumSq);
+		}
+	}
+
+	return Math.sqrt(sumSq);
+}
+
 export function isFaceMatch(candidate, stored, threshold = DEFAULT_FACE_MATCH_THRESHOLD) {
 	const distance = compareFaceDescriptors(candidate, stored);
 	return {

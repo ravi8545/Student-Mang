@@ -2,9 +2,12 @@ import Student from '../models/student.model.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import {
 	buildFaceDescriptor,
+	euclideanDistance,
 	isFaceMatch,
 	sanitizeFaceLandmarks,
 } from '../utils/face.js';
+
+const DUPLICATE_FACE_THRESHOLD = 0.5;
 
 function getFacePayload(req) {
 	return {
@@ -29,6 +32,23 @@ export const registerFace = asyncHandler(async (req, res) => {
 	const student = await Student.findById(req.user.id).select('-password');
 	if (!student) {
 		return res.status(404).json({ success: false, message: 'Student not found' });
+	}
+
+	const existingDescriptors = await Student.find({
+		_id: { $ne: student._id },
+		'faceDescriptor.0': { $exists: true },
+	})
+		.select('_id faceDescriptor')
+		.lean();
+
+	for (const other of existingDescriptors) {
+		const distance = euclideanDistance(faceDescriptor, other?.faceDescriptor, DUPLICATE_FACE_THRESHOLD);
+		if (distance < DUPLICATE_FACE_THRESHOLD) {
+			return res.status(409).json({
+				success: false,
+				message: 'Face already registered with another user',
+			});
+		}
 	}
 
 	student.faceLandmarks = cleanedLandmarks;

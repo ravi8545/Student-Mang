@@ -11,9 +11,10 @@ import { errorHandler, notFound } from './middleware/error.middleware.js';
 const app = express();
 
 // Allow requests from the React dev server.
+const frontendOrigin = String(process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
 app.use(
 	cors({
-		origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+		origin: frontendOrigin,
 		credentials: true,
 	})
 );
