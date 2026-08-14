@@ -7,20 +7,21 @@ import {
 	sanitizeFaceLandmarks,
 } from '../utils/face.js';
 
-const DUPLICATE_FACE_THRESHOLD = 0.16;
+const DUPLICATE_FACE_THRESHOLD = 0.28;
 
 function getFacePayload(req) {
 	return {
 		faceLandmarks: req.body?.faceLandmarks,
 		faceImageDataUrl: req.body?.faceImageDataUrl || null,
+		aspectRatio: Number(req.body?.aspectRatio) || null,
 	};
 }
 
 // POST /api/face/register (student)
 export const registerFace = asyncHandler(async (req, res) => {
-	const { faceLandmarks, faceImageDataUrl } = getFacePayload(req);
+	const { faceLandmarks, faceImageDataUrl, aspectRatio } = getFacePayload(req);
 	const cleanedLandmarks = sanitizeFaceLandmarks(faceLandmarks);
-	const faceDescriptor = buildFaceDescriptor(cleanedLandmarks);
+	const faceDescriptor = buildFaceDescriptor(cleanedLandmarks, aspectRatio);
 
 	if (!cleanedLandmarks.length || !faceDescriptor.length) {
 		return res.status(400).json({
@@ -34,19 +35,26 @@ export const registerFace = asyncHandler(async (req, res) => {
 		return res.status(404).json({ success: false, message: 'Student not found' });
 	}
 
-	const existingDescriptors = await Student.find({
+	const existingStudents = await Student.find({
 		_id: { $ne: student._id },
-		'faceDescriptor.0': { $exists: true },
+		$or: [
+			{ 'faceLandmarks.0': { $exists: true } },
+			{ 'faceDescriptor.0': { $exists: true } },
+		],
 	})
-		.select('_id faceDescriptor')
+		.select('_id faceDescriptor faceLandmarks')
 		.lean();
 
-	for (const other of existingDescriptors) {
-		const distance = euclideanDistance(faceDescriptor, other?.faceDescriptor, DUPLICATE_FACE_THRESHOLD);
+	for (const other of existingStudents) {
+		const otherDescriptor = (Array.isArray(other.faceLandmarks) && other.faceLandmarks.length >= 10)
+			? buildFaceDescriptor(other.faceLandmarks)
+			: other.faceDescriptor;
+
+		const distance = euclideanDistance(faceDescriptor, otherDescriptor);
 		if (distance < DUPLICATE_FACE_THRESHOLD) {
 			return res.status(409).json({
 				success: false,
-				message: 'Face already registered with another user',
+				message: 'Face matches another already registered student account',
 			});
 		}
 	}
@@ -72,8 +80,8 @@ export const registerFace = asyncHandler(async (req, res) => {
 
 // POST /api/face/verify (admin)
 export const verifyFace = asyncHandler(async (req, res) => {
-	const { faceLandmarks } = getFacePayload(req);
-	const candidateDescriptor = buildFaceDescriptor(faceLandmarks);
+	const { faceLandmarks, aspectRatio } = getFacePayload(req);
+	const candidateDescriptor = buildFaceDescriptor(faceLandmarks, aspectRatio);
 
 	if (!candidateDescriptor.length) {
 		return res.status(400).json({
@@ -82,31 +90,55 @@ export const verifyFace = asyncHandler(async (req, res) => {
 		});
 	}
 
-	const students = await Student.find({ 'faceDescriptor.0': { $exists: true } })
-		.select('_id name rollNo email department roomNo hostelName photoUrl faceDescriptor')
+	const students = await Student.find({
+		$or: [
+			{ 'faceLandmarks.0': { $exists: true } },
+			{ 'faceDescriptor.0': { $exists: true } },
+		],
+	})
+		.select('_id name rollNo email department roomNo hostelName photoUrl faceDescriptor faceLandmarks')
 		.lean();
 
 	if (!students.length) {
-		return res.status(404).json({ success: false, message: 'No registered faces found in system' });
+		return res.status(404).json({ success: false, message: 'No registered faces found in database' });
 	}
 
-	let bestMatch = null;
+	const scoredMatches = [];
 	for (const student of students) {
-		const result = isFaceMatch(candidateDescriptor, student.faceDescriptor);
-		if (!bestMatch || result.distance < bestMatch.distance) {
-			bestMatch = {
-				student,
-				...result,
-			};
-		}
+		// Auto-rebuild descriptor with aspect ratio normalization for stored landmarks
+		const storedDescriptor = (Array.isArray(student.faceLandmarks) && student.faceLandmarks.length >= 10)
+			? buildFaceDescriptor(student.faceLandmarks)
+			: student.faceDescriptor;
+
+		const result = isFaceMatch(candidateDescriptor, storedDescriptor);
+		scoredMatches.push({
+			student,
+			...result,
+		});
 	}
+
+	// Sort matches by distance ascending (smallest distance = closest match)
+	scoredMatches.sort((a, b) => a.distance - b.distance);
+
+	const bestMatch = scoredMatches[0];
+	const runnerUp = scoredMatches.length > 1 ? scoredMatches[1] : null;
 
 	if (!bestMatch?.match) {
 		return res.status(404).json({
 			success: false,
-			message: 'Face not recognized. Distance: ' + (bestMatch?.distance?.toFixed(3) || 'N/A'),
+			message: `Face not recognized. Distance: ${bestMatch?.distance !== undefined && Number.isFinite(bestMatch.distance) ? bestMatch.distance.toFixed(3) : 'N/A'}`,
 			distance: bestMatch?.distance ?? null,
 			threshold: bestMatch?.threshold ?? null,
+		});
+	}
+
+	// Ambiguity check: if runner up is also very close (margin < 0.04), require a clearer angle/lighting
+	if (runnerUp && runnerUp.distance <= 0.30 && (runnerUp.distance - bestMatch.distance) < 0.04) {
+		return res.status(400).json({
+			success: false,
+			message: 'Multiple close face matches detected. Please center the student face clearly in frame and try again.',
+			distance: bestMatch.distance,
+			margin: runnerUp.distance - bestMatch.distance,
 		});
 	}
 

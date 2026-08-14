@@ -43,6 +43,7 @@ export default function FaceVerificationPanel({ onAttendanceMarked }) {
 		try {
 			const verifyRes = await api.post('/face/verify', {
 				faceLandmarks: payload.faceLandmarks,
+				aspectRatio: payload.aspectRatio,
 			});
 
 			const studentId = verifyRes.data?.studentId;

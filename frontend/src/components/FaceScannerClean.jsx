@@ -28,6 +28,21 @@ function normalizeLandmarks(landmarks) {
 
 function drawOverlay(ctx, landmarks, width, height) {
 	ctx.clearRect(0, 0, width, height);
+
+	// Draw subtle biometric face guide oval
+	const centerX = width / 2;
+	const centerY = height / 2;
+	const radiusX = width * 0.22;
+	const radiusY = height * 0.35;
+
+	ctx.strokeStyle = Array.isArray(landmarks) && landmarks.length ? 'rgba(59, 130, 246, 0.75)' : 'rgba(255, 255, 255, 0.3)';
+	ctx.lineWidth = 2;
+	ctx.setLineDash([6, 6]);
+	ctx.beginPath();
+	ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+	ctx.stroke();
+	ctx.setLineDash([]);
+
 	if (!Array.isArray(landmarks) || !landmarks.length) return;
 
 	// Draw facial mesh overlay with glowing dots
@@ -160,8 +175,8 @@ export default function FaceScanner({
 							if (messageRef.current) updateMessage('');
 						} else {
 							if (statusRef.current !== 'searching') updateStatus('searching');
-							if (messageRef.current !== 'Align your face in the camera frame and stay clear.') {
-								updateMessage('Align your face in the camera frame and stay clear.');
+							if (messageRef.current !== 'Align your face inside the blue oval guide.') {
+								updateMessage('Align your face inside the blue oval guide.');
 							}
 						}
 					}
@@ -210,10 +225,14 @@ export default function FaceScanner({
 				throw new Error('No clear face detected in frame');
 			}
 
+			const aspectRatio = videoEl?.videoWidth && videoEl?.videoHeight
+				? videoEl.videoWidth / videoEl.videoHeight
+				: 1.7778;
+
 			const faceImageDataUrl = captureFrame(videoEl);
 			setPreviewUrl(faceImageDataUrl);
 
-			await onCapture?.({ faceLandmarks, faceImageDataUrl });
+			await onCapture?.({ faceLandmarks, faceImageDataUrl, aspectRatio });
 			updateMessage('Face sample captured and processed successfully.');
 		} catch (err) {
 			updateMessage(getErrorMessage(err));
@@ -242,13 +261,13 @@ export default function FaceScanner({
 
 			<div
 				className="face-scanner-frame border shadow-sm rounded overflow-hidden position-relative bg-dark"
-				style={{ minHeight: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+				style={{ aspectRatio: '16 / 9', maxHeight: 380, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
 			>
 				<video
 					ref={videoRef}
 					className="face-scanner-video w-100 h-100"
 					style={{
-						objectFit: 'contain',
+						objectFit: 'cover',
 						transform: isUserMode ? 'scaleX(-1)' : 'none',
 					}}
 					muted
@@ -258,7 +277,7 @@ export default function FaceScanner({
 					ref={canvasRef}
 					className="face-scanner-overlay position-absolute inset-0 w-100 h-100 pointer-events-none"
 					style={{
-						objectFit: 'contain',
+						objectFit: 'cover',
 						transform: isUserMode ? 'scaleX(-1)' : 'none',
 					}}
 				/>

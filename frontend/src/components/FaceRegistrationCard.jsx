@@ -34,6 +34,7 @@ export default function FaceRegistrationCard({ student, onRegistered }) {
 			const res = await api.post('/face/register', {
 				faceLandmarks: payload.faceLandmarks,
 				faceImageDataUrl: payload.faceImageDataUrl,
+				aspectRatio: payload.aspectRatio,
 			});
 
 			setSuccess(res.data?.message || 'Face registered successfully');
