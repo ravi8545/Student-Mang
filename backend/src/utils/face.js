@@ -1,159 +1,143 @@
-const DEFAULT_FACE_MATCH_THRESHOLD = Number(process.env.FACE_MATCH_THRESHOLD || 0.28);
+/**
+ * Face descriptor utility for MediaPipe 478-point face mesh.
+ *
+ * Algorithm:
+ *   1. Translate all landmarks so nose-tip (index 1) is the origin.
+ *   2. Compute 2D roll angle from left-eye-center to right-eye-center.
+ *   3. Rotate all points to de-roll (eyes become horizontally aligned).
+ *   4. Scale all coordinates by inter-ocular distance so the descriptor
+ *      is size/distance invariant.
+ *   5. Flatten to a 1-D vector [x0, y0, z0, x1, y1, z1, ...].
+ *
+ * The descriptor is purely geometric — no aspect-ratio heuristics,
+ * no camera metadata needed. As long as both registration and verification
+ * use the same MediaPipe model, the raw landmark coordinates are in the
+ * same normalised [0,1]×[0,1] space, so the descriptors are comparable.
+ */
+
+const DEFAULT_FACE_MATCH_THRESHOLD = Number(process.env.FACE_MATCH_THRESHOLD || 0.55);
+
+// Anatomically stable landmarks that carry the most identity signal.
+// Weighted 3× during comparison to emphasise bone-structure over soft tissue.
+const KEY_LANDMARK_INDICES = new Set([
+	1, 4, 6, 168, 197,           // Nose tip & bridge
+	33, 133, 159, 145,           // Left eye corners & lids
+	362, 263, 386, 374,          // Right eye corners & lids
+	70, 63, 105, 66, 107,       // Left eyebrow
+	336, 296, 334, 293, 300,    // Right eyebrow
+	234, 454, 127, 356,         // Cheekbones & temple
+	152, 175,                    // Chin
+	61, 291,                     // Mouth corners
+]);
+
+/* ------------------------------------------------------------------ */
+/*  Sanitise raw landmark array from the client                       */
+/* ------------------------------------------------------------------ */
 
 export function sanitizeFaceLandmarks(landmarks) {
 	if (!Array.isArray(landmarks)) return [];
 
 	return landmarks
-		.map((point) => ({
-			x: Number(point?.x),
-			y: Number(point?.y),
-			z: Number(point?.z ?? 0),
-			w: Number(point?.w ?? 0),
-			h: Number(point?.h ?? 0),
+		.map((p) => ({
+			x: Number(p?.x),
+			y: Number(p?.y),
+			z: Number(p?.z ?? 0),
 		}))
-		.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z));
+		.filter(
+			(p) =>
+				Number.isFinite(p.x) &&
+				Number.isFinite(p.y) &&
+				Number.isFinite(p.z),
+		);
 }
 
-/**
- * Builds an eye-centered, 2D-roll compensated, aspect-ratio normalized face descriptor.
- * Uses MediaPipe 478/468 landmark geometry.
- */
-export function buildFaceDescriptor(landmarks, explicitAspectRatio = null) {
-	const points = sanitizeFaceLandmarks(landmarks);
-	if (!points.length || points.length < 10) return [];
+/* ------------------------------------------------------------------ */
+/*  Build a face descriptor from raw MediaPipe landmarks              */
+/* ------------------------------------------------------------------ */
 
-	// Determine camera aspect ratio (Width / Height)
-	let aspect = explicitAspectRatio;
-	if (!aspect || aspect <= 0) {
-		// Check if point has w and h attached
-		const firstPointWithDim = points.find((p) => p.w > 0 && p.h > 0);
-		if (firstPointWithDim) {
-			aspect = firstPointWithDim.w / firstPointWithDim.h;
-		}
-	}
+export function buildFaceDescriptor(landmarks) {
+	const pts = sanitizeFaceLandmarks(landmarks);
+	if (pts.length < 10) return [];
 
-	// Anatomical fallback aspect ratio estimator if missing
-	if (!aspect || aspect <= 0) {
-		const pLeft33 = points[33] || points[0];
-		const pRight263 = points[263] || points[points.length - 1];
-		const nose = points[1] || points[0];
-		const chin = points[152] || points[points.length - 1];
+	// --- reference points ---
+	const nose = pts[1] || pts[0];
 
-		const dxUnscaled = Math.abs(pRight263.x - pLeft33.x);
-		const dyUnscaled = Math.abs(chin.y - (pLeft33.y + pRight263.y) / 2);
+	const lEye1 = pts[33]  || pts[0];
+	const lEye2 = pts[133] || pts[0];
+	const rEye1 = pts[362] || pts[pts.length - 1];
+	const rEye2 = pts[263] || pts[pts.length - 1];
 
-		if (dxUnscaled > 1e-4 && dyUnscaled > 1e-4) {
-			// In human faces, InterOcularDistance / EyeToChinDistance is approx 0.44
-			aspect = (0.44 * dyUnscaled) / dxUnscaled;
-			aspect = Math.max(0.5, Math.min(2.5, aspect));
-		} else {
-			aspect = 1.7778; // Default 16:9 landscape aspect ratio
-		}
-	}
+	const leftEye  = { x: (lEye1.x + lEye2.x) / 2, y: (lEye1.y + lEye2.y) / 2, z: (lEye1.z + lEye2.z) / 2 };
+	const rightEye = { x: (rEye1.x + rEye2.x) / 2, y: (rEye1.y + rEye2.y) / 2, z: (rEye1.z + rEye2.z) / 2 };
 
-	// 1. Transform all points into 2D isotropic space (x_iso = x * aspect, y_iso = y, z_iso = z * aspect)
-	const isoPoints = points.map((p) => ({
-		x: p.x * aspect,
-		y: p.y,
-		z: p.z * aspect,
-	}));
-
-	// Nose tip landmark index 1
-	const nose = isoPoints[1] || isoPoints[0];
-
-	// Left Eye (33, 133) & Right Eye (362, 263)
-	const pLeft33 = isoPoints[33] || isoPoints[0];
-	const pLeft133 = isoPoints[133] || isoPoints[0];
-	const pRight362 = isoPoints[362] || isoPoints[isoPoints.length - 1];
-	const pRight263 = isoPoints[263] || isoPoints[isoPoints.length - 1];
-
-	const leftEye = {
-		x: (pLeft33.x + pLeft133.x) / 2,
-		y: (pLeft33.y + pLeft133.y) / 2,
-		z: (pLeft33.z + pLeft133.z) / 2,
-	};
-
-	const rightEye = {
-		x: (pRight362.x + pRight263.x) / 2,
-		y: (pRight362.y + pRight263.y) / 2,
-		z: (pRight362.z + pRight263.z) / 2,
-	};
-
+	// inter-ocular distance → scale factor
 	const dx = rightEye.x - leftEye.x;
 	const dy = rightEye.y - leftEye.y;
 	const dz = rightEye.z - leftEye.z;
+	const iod = Math.sqrt(dx * dx + dy * dy + dz * dz);
+	const scale = iod > 1e-6 ? iod : 0.1;
 
-	const interOcularDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-	const scale = interOcularDist > 1e-4 ? interOcularDist : 0.1;
+	// 2-D roll angle
+	const roll = Math.atan2(dy, dx);
+	const cos = Math.cos(-roll);
+	const sin = Math.sin(-roll);
 
-	// Roll angle theta for 2D rotation compensation
-	const rollAngle = Math.atan2(dy, dx);
-	const cosTheta = Math.cos(-rollAngle);
-	const sinTheta = Math.sin(-rollAngle);
+	const desc = new Array(pts.length * 3);
+	for (let i = 0; i < pts.length; i++) {
+		// translate so nose = origin
+		const tx = pts[i].x - nose.x;
+		const ty = pts[i].y - nose.y;
+		const tz = pts[i].z - nose.z;
 
-	const descriptor = [];
-	for (const point of isoPoints) {
-		// Translate relative to nose tip
-		const tx = point.x - nose.x;
-		const ty = point.y - nose.y;
-		const tz = point.z - nose.z;
+		// de-roll
+		const rx = tx * cos - ty * sin;
+		const ry = tx * sin + ty * cos;
 
-		// Rotate to align horizontal eye axis
-		const rx = tx * cosTheta - ty * sinTheta;
-		const ry = tx * sinTheta + ty * cosTheta;
-		const rz = tz;
-
-		// Normalize by inter-ocular scale
-		descriptor.push(Number((rx / scale).toFixed(5)));
-		descriptor.push(Number((ry / scale).toFixed(5)));
-		descriptor.push(Number((rz / scale).toFixed(5)));
+		// scale-normalise
+		desc[i * 3]     = rx / scale;
+		desc[i * 3 + 1] = ry / scale;
+		desc[i * 3 + 2] = tz / scale;
 	}
 
-	return descriptor;
+	return desc;
 }
 
-/**
- * Computes mean landmark distance between candidate and stored face descriptors.
- */
-export function compareFaceDescriptors(candidate, stored, aspectCandidate = null, aspectStored = null) {
-	const candidateVec = Array.isArray(candidate) && typeof candidate[0] === 'object'
-		? buildFaceDescriptor(candidate, aspectCandidate)
-		: candidate;
-	const storedVec = Array.isArray(stored) && typeof stored[0] === 'object'
-		? buildFaceDescriptor(stored, aspectStored)
-		: stored;
+/* ------------------------------------------------------------------ */
+/*  Compare two descriptors (both must be flat number arrays)         */
+/* ------------------------------------------------------------------ */
 
-	if (!Array.isArray(candidateVec) || !Array.isArray(storedVec)) {
+export function compareFaceDescriptors(a, b) {
+	// auto-convert if someone passes raw landmark objects
+	const va = Array.isArray(a) && a.length && typeof a[0] === 'object' ? buildFaceDescriptor(a) : a;
+	const vb = Array.isArray(b) && b.length && typeof b[0] === 'object' ? buildFaceDescriptor(b) : b;
+
+	if (!Array.isArray(va) || !Array.isArray(vb) || !va.length || va.length !== vb.length) {
 		return Number.POSITIVE_INFINITY;
 	}
 
-	if (!candidateVec.length || candidateVec.length !== storedVec.length) {
-		return Number.POSITIVE_INFINITY;
+	let wSum = 0;
+	let wTotal = 0;
+
+	for (let i = 0; i < va.length; i += 3) {
+		const idx = i / 3;
+		const ex = va[i]     - vb[i];
+		const ey = va[i + 1] - vb[i + 1];
+		const ez = va[i + 2] - vb[i + 2];
+		const d  = Math.sqrt(ex * ex + ey * ey + ez * ez);
+
+		const w = KEY_LANDMARK_INDICES.has(idx) ? 3.0 : 1.0;
+		wSum   += d * w;
+		wTotal += w;
 	}
 
-	let totalDistance = 0;
-	const numPoints = candidateVec.length / 3;
-
-	for (let i = 0; i < candidateVec.length; i += 3) {
-		const dx = Number(candidateVec[i]) - Number(storedVec[i]);
-		const dy = Number(candidateVec[i + 1]) - Number(storedVec[i + 1]);
-		const dz = Number(candidateVec[i + 2]) - Number(storedVec[i + 2]);
-
-		totalDistance += Math.sqrt(dx * dx + dy * dy + dz * dz);
-	}
-
-	return totalDistance / numPoints;
+	return wTotal > 0 ? wSum / wTotal : Number.POSITIVE_INFINITY;
 }
 
-export function euclideanDistance(candidate, stored) {
-	return compareFaceDescriptors(candidate, stored);
+export function euclideanDistance(a, b) {
+	return compareFaceDescriptors(a, b);
 }
 
 export function isFaceMatch(candidate, stored, threshold = DEFAULT_FACE_MATCH_THRESHOLD) {
 	const distance = compareFaceDescriptors(candidate, stored);
-	return {
-		match: distance <= threshold,
-		distance,
-		threshold,
-	};
+	return { match: distance <= threshold, distance, threshold };
 }

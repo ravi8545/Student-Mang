@@ -21,11 +21,11 @@ function getErrorMessage(err) {
 }
 
 function formatConfidence(distance, threshold) {
-	if (typeof distance !== 'number' || typeof threshold !== 'number' || threshold <= 0) {
-		return '-';
-	}
-	const score = Math.max(0, Math.min(100, Math.round((1 - distance / threshold) * 100)));
-	return `${score}%`;
+	if (typeof distance !== 'number') return '-';
+	const base = 0.75;
+	const ratio = Math.min(1, distance / base);
+	const score = Math.max(1, Math.min(99, Math.round((1 - ratio ** 1.5) * 100)));
+	return `${score}% (Distance: ${distance.toFixed(3)})`;
 }
 
 export default function FaceVerificationPanel({ onAttendanceMarked }) {
@@ -43,7 +43,6 @@ export default function FaceVerificationPanel({ onAttendanceMarked }) {
 		try {
 			const verifyRes = await api.post('/face/verify', {
 				faceLandmarks: payload.faceLandmarks,
-				aspectRatio: payload.aspectRatio,
 			});
 
 			const studentId = verifyRes.data?.studentId;

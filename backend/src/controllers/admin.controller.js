@@ -2,7 +2,31 @@ import Attendance from '../models/attendance.model.js';
 import Student from '../models/student.model.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { getLocalDateString } from '../utils/date.js';
+import { buildFaceDescriptor } from '../utils/face.js';
 
+// POST /api/admin/rebuild-faces  — re-compute faceDescriptor for every student
+// from their stored raw faceLandmarks using the current algorithm.
+export const rebuildFaceDescriptors = asyncHandler(async (req, res) => {
+	const students = await Student.find({ 'faceLandmarks.0': { $exists: true } });
+
+	let updated = 0;
+	for (const student of students) {
+		if (!Array.isArray(student.faceLandmarks) || student.faceLandmarks.length < 10) continue;
+		const newDesc = buildFaceDescriptor(student.faceLandmarks);
+		if (!newDesc.length) continue;
+
+		student.faceDescriptor = newDesc;
+		await student.save();
+		updated++;
+		console.log(`[rebuild-faces] Updated descriptor for ${student.name} (${student.rollNo}), ${newDesc.length} values`);
+	}
+
+	return res.json({
+		success: true,
+		message: `Rebuilt face descriptors for ${updated} student(s).`,
+		updated,
+	});
+});
 function isCurrentlyIn(attendance) {
 	if (!attendance) return false;
 	const sessions = attendance.sessions;
