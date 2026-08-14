@@ -7,7 +7,7 @@ import {
 	sanitizeFaceLandmarks,
 } from '../utils/face.js';
 
-const DUPLICATE_FACE_THRESHOLD = 0.5;
+const DUPLICATE_FACE_THRESHOLD = 0.16;
 
 function getFacePayload(req) {
 	return {
@@ -87,7 +87,7 @@ export const verifyFace = asyncHandler(async (req, res) => {
 		.lean();
 
 	if (!students.length) {
-		return res.status(404).json({ success: false, message: 'No registered faces found' });
+		return res.status(404).json({ success: false, message: 'No registered faces found in system' });
 	}
 
 	let bestMatch = null;
@@ -104,7 +104,7 @@ export const verifyFace = asyncHandler(async (req, res) => {
 	if (!bestMatch?.match) {
 		return res.status(404).json({
 			success: false,
-			message: 'Face not recognized',
+			message: 'Face not recognized. Distance: ' + (bestMatch?.distance?.toFixed(3) || 'N/A'),
 			distance: bestMatch?.distance ?? null,
 			threshold: bestMatch?.threshold ?? null,
 		});
@@ -112,7 +112,7 @@ export const verifyFace = asyncHandler(async (req, res) => {
 
 	return res.json({
 		success: true,
-		message: 'Face matched',
+		message: 'Face matched successfully',
 		studentId: String(bestMatch.student._id),
 		distance: bestMatch.distance,
 		threshold: bestMatch.threshold,

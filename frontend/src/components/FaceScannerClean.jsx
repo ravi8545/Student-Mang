@@ -30,12 +30,13 @@ function drawOverlay(ctx, landmarks, width, height) {
 	ctx.clearRect(0, 0, width, height);
 	if (!Array.isArray(landmarks) || !landmarks.length) return;
 
-	ctx.fillStyle = 'rgba(13, 110, 253, 0.95)';
+	// Draw facial mesh overlay with glowing dots
+	ctx.fillStyle = '#3b82f6';
 	for (const point of landmarks) {
 		const x = point.x * width;
 		const y = point.y * height;
 		ctx.beginPath();
-		ctx.arc(x, y, 1.6, 0, Math.PI * 2);
+		ctx.arc(x, y, 1.8, 0, Math.PI * 2);
 		ctx.fill();
 	}
 }
@@ -43,7 +44,7 @@ function drawOverlay(ctx, landmarks, width, height) {
 function captureFrame(videoEl) {
 	if (!videoEl?.videoWidth || !videoEl?.videoHeight) return '';
 	const maxSide = 640;
-	const jpegQuality = 0.7;
+	const jpegQuality = 0.8;
 
 	const sourceWidth = videoEl.videoWidth;
 	const sourceHeight = videoEl.videoHeight;
@@ -101,7 +102,7 @@ export default function FaceScanner({
 		async function start() {
 			try {
 				updateStatus('loading');
-				updateMessage('Loading face model…');
+				updateMessage('Initializing face detection neural network…');
 
 				const filesetResolver = await FilesetResolver.forVisionTasks(WASM_PATH);
 				if (!active) return;
@@ -147,8 +148,10 @@ export default function FaceScanner({
 
 						const ctx = canvas.getContext('2d');
 						if (ctx) {
-							canvas.width = video.videoWidth;
-							canvas.height = video.videoHeight;
+							if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+								canvas.width = video.videoWidth;
+								canvas.height = video.videoHeight;
+							}
 							drawOverlay(ctx, landmarks, canvas.width, canvas.height);
 						}
 
@@ -157,8 +160,8 @@ export default function FaceScanner({
 							if (messageRef.current) updateMessage('');
 						} else {
 							if (statusRef.current !== 'searching') updateStatus('searching');
-							if (messageRef.current !== 'Align your face in the frame and keep still.') {
-								updateMessage('Align your face in the frame and keep still.');
+							if (messageRef.current !== 'Align your face in the camera frame and stay clear.') {
+								updateMessage('Align your face in the camera frame and stay clear.');
 							}
 						}
 					}
@@ -198,20 +201,20 @@ export default function FaceScanner({
 	async function handleCapture() {
 		if (disabled || capturing) return;
 		setCapturing(true);
-		updateMessage('Capturing face sample…');
+		updateMessage('Capturing high-resolution face sample…');
 
 		try {
 			const videoEl = videoRef.current;
 			const faceLandmarks = latestLandmarksRef.current;
 			if (!faceLandmarks.length) {
-				throw new Error('No face detected yet');
+				throw new Error('No clear face detected in frame');
 			}
 
 			const faceImageDataUrl = captureFrame(videoEl);
 			setPreviewUrl(faceImageDataUrl);
 
 			await onCapture?.({ faceLandmarks, faceImageDataUrl });
-			updateMessage('Face sample captured successfully.');
+			updateMessage('Face sample captured and processed successfully.');
 		} catch (err) {
 			updateMessage(getErrorMessage(err));
 		} finally {
@@ -219,11 +222,13 @@ export default function FaceScanner({
 		}
 	}
 
+	const isUserMode = cameraFacingMode === 'user';
+
 	return (
-		<div className="face-scanner-shell">
+		<div className="face-scanner-shell p-3 rounded bg-light border">
 			<div className="d-flex justify-content-between align-items-start gap-3 mb-2">
 				<div>
-					<div className="fw-semibold">{title}</div>
+					<div className="fw-bold text-dark">{title}</div>
 					<div className="small text-muted">{description}</div>
 				</div>
 				<span
@@ -235,14 +240,33 @@ export default function FaceScanner({
 				</span>
 			</div>
 
-			<div className="face-scanner-frame">
-				<video ref={videoRef} className="face-scanner-video" muted playsInline />
-				<canvas ref={canvasRef} className="face-scanner-overlay" />
+			<div
+				className="face-scanner-frame border shadow-sm rounded overflow-hidden position-relative bg-dark"
+				style={{ minHeight: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+			>
+				<video
+					ref={videoRef}
+					className="face-scanner-video w-100 h-100"
+					style={{
+						objectFit: 'contain',
+						transform: isUserMode ? 'scaleX(-1)' : 'none',
+					}}
+					muted
+					playsInline
+				/>
+				<canvas
+					ref={canvasRef}
+					className="face-scanner-overlay position-absolute inset-0 w-100 h-100 pointer-events-none"
+					style={{
+						objectFit: 'contain',
+						transform: isUserMode ? 'scaleX(-1)' : 'none',
+					}}
+				/>
 			</div>
 
 			<div className="d-flex flex-wrap gap-2 align-items-center mt-3">
 				<button
-					className="btn btn-primary"
+					className="btn btn-primary fw-bold"
 					onClick={handleCapture}
 					disabled={disabled || capturing || status === 'loading'}
 					type="button"
@@ -250,15 +274,16 @@ export default function FaceScanner({
 					{capturing ? 'Processing…' : captureLabel}
 				</button>
 				<div className="small text-muted">
-					{status === 'ready' ? 'Face detected' : 'Waiting for a clear face sample'}
+					{status === 'ready' ? '✓ Face aligned & ready' : 'Waiting for face alignment'}
 				</div>
 			</div>
 
-			{message ? <div className="alert alert-info mt-3 mb-0">{message}</div> : null}
+			{message ? <div className="alert alert-info py-2 small mt-3 mb-0">{message}</div> : null}
 
 			{previewUrl ? (
-				<div className="mt-3">
-					<img className="face-preview-image" src={previewUrl} alt="Captured face preview" />
+				<div className="mt-3 text-center">
+					<div className="small text-muted mb-1">Captured Sample Preview:</div>
+					<img className="face-preview-image border rounded shadow-sm" src={previewUrl} alt="Captured face preview" style={{ maxWidth: 240, maxHeight: 180, objectFit: 'cover' }} />
 				</div>
 			) : null}
 		</div>

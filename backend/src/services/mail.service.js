@@ -1,96 +1,99 @@
-import nodemailer from 'nodemailer';
+import * as Brevo from '@getbrevo/brevo';
 
-// Email service used for verification emails.
-// Uses Gmail SMTP App Password (EMAIL_USER + EMAIL_PASS)
+// Email service using Brevo (formerly Sendinblue) Transactional Emails API v3
+// Replaces Nodemailer to provide reliable email verification delivery.
 
-function logMailEnvStatus() {
-	const emailUser = String(process.env.EMAIL_USER || '').trim();
-	const emailPass = String(process.env.EMAIL_PASS || '');
+function getBrevoConfig() {
+	const apiKey = String(process.env.BREVO_API_KEY || '').trim();
+	const senderEmail = String(process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER || 'noreply@hostelqr.com').trim();
+	const senderName = String(process.env.BREVO_SENDER_NAME || 'Hostel Entry-Exit System').trim();
 
-	console.log('[mail] EMAIL_USER set:', Boolean(emailUser));
-	if (emailUser) console.log('[mail] EMAIL_USER:', emailUser);
-	console.log('[mail] EMAIL_PASS length:', emailPass.length);
+	const isConfigured = Boolean(
+		apiKey &&
+		apiKey !== 'xkeysib-your_brevo_api_key_here' &&
+		apiKey.length > 10
+	);
 
-	if (emailPass && emailPass.length !== 16) {
+	return { apiKey, senderEmail, senderName, isConfigured };
+}
+
+function logMailStatus() {
+	const config = getBrevoConfig();
+	console.log('[mail/brevo] BREVO_API_KEY configured:', config.isConfigured);
+	if (config.isConfigured) {
+		console.log('[mail/brevo] Sender Identity:', `${config.senderName} <${config.senderEmail}>`);
+	} else {
 		console.warn(
-			'[mail] EMAIL_PASS does not look like a Gmail App Password (expected 16 characters). Do not use your normal Gmail password.'
+			'[mail/brevo] BREVO_API_KEY is not configured or using placeholder value. Email verification links will be logged to console in local dev mode.'
 		);
 	}
 }
 
-function buildTransporter() {
-	const emailUser = String(process.env.EMAIL_USER || '').trim();
-	const emailPass = String(process.env.EMAIL_PASS || '');
-
-	if (!emailUser || !emailPass) return null;
-
-	// Gmail SMTP with App Password (recommended).
-	return nodemailer.createTransport({
-		host: 'smtp.gmail.com',
-		port: 465,
-		secure: true,
-		auth: {
-			user: emailUser,
-			pass: emailPass,
-		},
-	});
-}
-
-logMailEnvStatus();
-const transporter = buildTransporter();
-
-if (transporter) {
-	transporter
-		.verify()
-		.then(() => console.log('Email transporter is ready'))
-		.catch((err) => {
-			console.warn('Email transporter verification failed:', err?.message);
-			console.warn(
-				'[mail] If this is Gmail, ensure you are using a Gmail App Password (not your normal password) and that 2-Step Verification is enabled.'
-			);
-		});
-} else {
-	console.warn('[mail] Email transporter not configured.');
-	console.warn(
-		'[mail] Missing EMAIL_USER and/or EMAIL_PASS. Set them in backend/.env using a Gmail App Password (NOT your normal Gmail password), then restart the backend.'
-	);
-}
+logMailStatus();
 
 export async function sendEmail({ to, subject, html, text }) {
-	if (!transporter) {
-		throw new Error(
-			'Mailer is not configured. Set EMAIL_USER and EMAIL_PASS (Gmail App Password) in backend/.env, then restart the backend.'
-		);
+	const config = getBrevoConfig();
+
+	console.log('[mail/brevo] Triggering email delivery to:', to, '| Subject:', subject);
+
+	if (!config.isConfigured) {
+		console.warn('[mail/brevo] BREVO_API_KEY is missing/unconfigured. Simulating email send locally:');
+		console.log('--------------------------------------------------');
+		console.log(`TO: ${to}`);
+		console.log(`SUBJECT: ${subject}`);
+		console.log(`TEXT CONTENT:\n${text}`);
+		console.log('--------------------------------------------------');
+		return { simulated: true, success: true, messageId: 'simulated-local-mail' };
 	}
 
-	const from = String(process.env.EMAIL_USER || '').trim();
-
-	console.log('[mail] sendEmail triggered', {
-		to,
-		subject,
-		usingFrom: from,
-	});
-
+	// Try sending via @getbrevo/brevo SDK first
 	try {
-		const details = await transporter.sendMail({
-			from,
-			to,
-			subject,
-			html,
-			text,
-		});
+		const apiInstance = new Brevo.TransactionalEmailsApi();
+		apiInstance.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, config.apiKey);
 
-		console.log('[mail] Email sent successfully', {
-			messageId: details?.messageId,
-			accepted: details?.accepted,
-			rejected: details?.rejected,
-		});
+		const sendSmtpEmail = new Brevo.SendSmtpEmail();
+		sendSmtpEmail.subject = subject;
+		sendSmtpEmail.htmlContent = html;
+		if (text) sendSmtpEmail.textContent = text;
+		sendSmtpEmail.sender = { name: config.senderName, email: config.senderEmail };
+		sendSmtpEmail.to = [{ email: to }];
 
-		return details;
-	} catch (err) {
-		console.error('[mail] transporter.sendMail failed:', err?.message || err);
-		throw new Error(
-			`Failed to send email. Check EMAIL_USER/EMAIL_PASS (Gmail App Password) and Gmail security settings. Details: ${err?.message || 'Unknown error'}`
-		);
+		const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+		console.log('[mail/brevo] Email sent successfully via Brevo SDK. Message ID:', data?.messageId || data?.body?.messageId);
+		return { success: true, messageId: data?.messageId || data?.body?.messageId };
+	} catch (sdkErr) {
+		console.warn('[mail/brevo] Brevo SDK attempt failed, attempting direct REST API fallback...', sdkErr?.message || sdkErr);
+		
+		// Fallback to direct HTTP REST API to ensure delivery
+		try {
+			const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+				method: 'POST',
+				headers: {
+					'accept': 'application/json',
+					'content-type': 'application/json',
+					'api-key': config.apiKey,
+				},
+				body: JSON.stringify({
+					sender: { name: config.senderName, email: config.senderEmail },
+					to: [{ email: to }],
+					subject,
+					htmlContent: html,
+					textContent: text,
+				}),
+			});
+
+			const responseData = await response.json().catch(() => null);
+
+			if (!response.ok) {
+				const errMsg = responseData?.message || responseData?.code || response.statusText;
+				throw new Error(`Brevo API returned status ${response.status}: ${errMsg}`);
+			}
+
+			console.log('[mail/brevo] Email sent successfully via Brevo REST API. Message ID:', responseData?.messageId);
+			return { success: true, messageId: responseData?.messageId };
+		} catch (restErr) {
+			console.error('[mail/brevo] Failed to send email via Brevo REST API:', restErr?.message || restErr);
+			throw new Error(`Failed to send email via Brevo: ${restErr?.message || 'Unknown error'}`);
+		}
 	}
 }
